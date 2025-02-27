@@ -25,7 +25,7 @@ class YOLOVideoApp(QWidget):
         self.frame_counter = 0
         self.last_time = time.time()
 
-        self.queue = queue.Queue(maxsize=10)
+        self.queue = queue.Queue(maxsize=30)
         self.running = False
         self.paused = False
         self.video_path = None
@@ -107,23 +107,26 @@ class YOLOVideoApp(QWidget):
                 continue
 
             ret, frame = cap.read()
-            if ret and not self.queue.full():
-                self.queue.put(frame)
-            elif not ret:
-                break
+            if not ret:
+                break  # Stop if video ends
+
+            # Wait if the queue is full
+            while self.queue.full():
+                time.sleep(0.1)  # Allow display to catch up
+
+            self.queue.put(frame)  # Add frame to queue
 
         cap.release()
 
     def display_frames(self):
         """Thread function to display and process frames."""
         while self.running:
+            if self.paused:
+                time.sleep(0.1)
+                continue
+
             if not self.queue.empty():
                 frame = self.queue.get()
-
-                # Skip frames
-                self.frame_counter += 1
-                if self.frame_counter % self.skip_frames != 0:
-                    continue
 
                 # YOLO detection
                 results = self.model(frame)
@@ -145,8 +148,8 @@ class YOLOVideoApp(QWidget):
                 pixmap = QPixmap.fromImage(qimg).scaled(640, 360, Qt.KeepAspectRatio)
                 self.image_label.setPixmap(pixmap)
 
-                # WaitKey slows down the frame rate (30ms delay per frame)
-                cv2.waitKey(100)  # Adjust this value (100ms → ~10 FPS)
+                # Add a delay to synchronize with actual FPS
+                time.sleep(1 / 30)  # Adjust this based on actual video FPS
 
     def start_video(self):
         """Start video processing threads."""
